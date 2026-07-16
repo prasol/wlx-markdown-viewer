@@ -86,23 +86,20 @@ def common_prefix(seqs):
     return m
 
 def batch_choice_scores(model,tok,prefixes):
-    seqs=[]; owners=[]
-    for r,prefix in enumerate(prefixes):
-        opts=[tok(prefix+f" {i}",add_special_tokens=False).input_ids for i in range(6)]
-        c=common_prefix(opts)
-        for s in opts:
-            seqs.append(s); owners.append((r,c))
-    M=max(map(len,seqs)); pad=tok.pad_token_id
-    x=torch.full((len(seqs),M),pad,dtype=torch.long,device=model.device)
-    am=torch.zeros_like(x)
-    for i,s in enumerate(seqs):
-        x[i,:len(s)]=torch.tensor(s,device=model.device); am[i,:len(s)]=1
-    with torch.inference_mode():
-        lp=torch.log_softmax(model(input_ids=x,attention_mask=am,use_cache=False).logits.float(),-1)
     out=np.zeros((len(prefixes),6),dtype=np.float64)
-    for i,s in enumerate(seqs):
-        r,c=owners[i]; opt=i%6
-        out[r,opt]=sum(float(lp[i,j-1,s[j]]) for j in range(c,len(s)))
+    pad=tok.pad_token_id
+    for r,prefix in enumerate(prefixes):
+        seqs=[tok(prefix+f" {i}",add_special_tokens=False).input_ids for i in range(6)]
+        c=common_prefix(seqs); M=max(map(len,seqs))
+        x=torch.full((6,M),pad,dtype=torch.long,device=model.device)
+        am=torch.zeros_like(x)
+        for i,s in enumerate(seqs):
+            x[i,:len(s)]=torch.tensor(s,device=model.device); am[i,:len(s)]=1
+        with torch.inference_mode():
+            lp=torch.log_softmax(model(input_ids=x,attention_mask=am,use_cache=False).logits.float(),-1)
+        for i,s in enumerate(seqs):
+            out[r,i]=sum(float(lp[i,j-1,s[j]]) for j in range(c,len(s)))
+        del x,am,lp
     return out
 
 def curvature(z):
